@@ -1,0 +1,62 @@
+on:
+  workflow_dispatch:
+    inputs:
+      stage1_trigger:
+        description: 'Deploy to Dev?'
+        required: false
+        default: 'false'
+        type: choice
+        options: [ 'false', 'true' ]
+      stage2_trigger:
+        description: 'Deploy to Production?'
+        required: false
+        default: 'false'
+        type: choice
+        options: [ 'false', 'true' ]
+  push:
+    branches:
+    - main
+    tags:
+      - v*
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Empty step
+      run: echo "This step would build an artifact"
+    - name: Set default artifact name
+      run: echo "artifact_name=original-artifact" >> $GITHUB_OUTPUT
+      id: set-artifact-name
+
+  modify:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Empty step
+      run: echo "This step would download the artifact and alter it"
+    - name: Set output if signed
+      run: echo "artifact_name=modified-artifact" >> $GITHUB_OUTPUT
+      id: set-artifact-name
+
+  deploy-to-dev:
+    needs: [ build, modify ]
+    if: |
+        github.event_name == 'workflow_dispatch' && github.event.inputs.stage1_trigger == 'true' ||
+        github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Empty step
+      run: echo "This step should deploy to Dev, manually on-demand or automatically"
+
+  deploy-to-prod:
+    environment: Requires-Approval
+    if: |
+        github.event_name == 'workflow_dispatch' && github.event.inputs.stage2_trigger == 'true' ||
+        github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [ build, modify ]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Empty step
+      run: echo "This step should deploy to Production, manually on-demand or automatically"
