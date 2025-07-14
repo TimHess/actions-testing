@@ -8,13 +8,13 @@ on:
         required: false
         default: 'false'
         type: choice
-        options: [ 'false', 'true' ]
+        options: ['false', 'true']
       stage2_trigger:
         description: 'Deploy to Production environment?'
         required: false
         default: 'false'
         type: choice
-        options: [ 'false', 'true' ]
+        options: ['false', 'true']
   push:
     branches:
       - main
@@ -24,55 +24,91 @@ on:
 
 jobs:
   build:
-    name: build
+    name: Build the artifact
     runs-on: ubuntu-latest
     outputs:
-      artifact_name: ${{ steps.set-artifact-name.outputs.artifact_name }}
+      artifact_name: ${{ steps.decide.outputs.artifact_name }}
+      run_modify: ${{ steps.decide.outputs.run_modify }}
+      deploy_to_development: ${{ steps.decide.outputs.deploy_to_development }}
+      deploy_to_production: ${{ steps.decide.outputs.deploy_to_production }}
     steps:
     - name: Build an artifact
       run: echo "This step builds an artifact"
 
-    - name: Set default artifact name
-      id: set-artifact-name
-      run: echo "artifact_name=original-artifact" >> $GITHUB_OUTPUT
+    - name: Decide what happens next
+      id: decide
+      run: |
+        echo "Evaluating next steps..."
+
+        PUSH_TO_MAIN=$([[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]] && echo true || echo false)
+        PUSH_TAG=$([[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/v* ]] && echo true || echo false)
+        STAGE1_TRIGGER=$([[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${{ github.event.inputs.stage1_trigger }}" == "true" ]] && echo true || echo false)
+        STAGE2_TRIGGER=$([[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${{ github.event.inputs.stage2_trigger }}" == "true" ]] && echo true || echo false)
+
+        if [[ "$PUSH_TO_MAIN" == true || "$PUSH_TAG" == true || "$STAGE2_TRIGGER" == true ]]; then
+          echo "artifact_name=modified-artifact" >> $GITHUB_OUTPUT
+          echo "run_modify=true" >> $GITHUB_OUTPUT
+          echo "Modified artifact will be published"
+        else
+          echo "artifact_name=original-artifact" >> $GITHUB_OUTPUT
+          echo "run_modify=false" >> $GITHUB_OUTPUT
+        fi
+
+        DEPLOY_TO_DEV=$([[ "$STAGE1_TRIGGER" == true || "$STAGE2_TRIGGER" == true || "$PUSH_TO_MAIN" == true || "$PUSH_TAG" == true ]] && echo true || echo false)
+        DEPLOY_TO_PROD=$([[ "$STAGE2_TRIGGER" == true || "$PUSH_TAG" == true ]] && echo true || echo false)
+
+        echo "deploy_to_development=$DEPLOY_TO_DEV" >> $GITHUB_OUTPUT
+        echo "deploy_to_production=$DEPLOY_TO_PROD" >> $GITHUB_OUTPUT
 
   modify:
     name: Modify the artifact
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: needs.build.outputs.run_modify == 'true'
     environment: Production
     runs-on: ubuntu-latest
-    outputs:
-      artifact_name: ${{ steps.set-artifact-name.outputs.artifact_name }}
     steps:
+    - name: Download the artifact
+      run: echo "This step downloads the artifact"
+
     - name: Modify the artifact
-      run: echo "This step downloads the artifact and alters it"
+      run: echo "This step alters the artifact"
 
-    - name: Set output if modified
-      id: set-artifact-name
-      run: echo "artifact_name=modified-artifact" >> $GITHUB_OUTPUT
+    - name: Upload the modified artifact
+      run: echo "This step uploads the modified artifact"
 
-  deploy-to-dev:
-    name: Deploy to Development
-    needs: [ build, modify ]
-    if: |
-      github.event_name == 'workflow_dispatch' && github.event.inputs.stage1_trigger == 'true' ||
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
+  deploy-unmodified-to-dev:
+    name: Deploy unmodified to Development
+    needs: build
+    if: needs.build.outputs.deploy_to_development == 'true' && needs.build.outputs.run_modify != 'true'
     runs-on: ubuntu-latest
     steps:
+    - name: Download the artifact
+      run: echo "This step downloads ${{ needs.build.outputs.artifact_name }}"
+
     - name: Deploy to development
-      run: |
-        echo "This step should deploy ${{ needs.modify.outputs.artifact_name || needs.build.outputs.artifact_name }} to Dev, manually on-demand or automatically"
+      run: echo "This step deploys ${{ needs.build.outputs.artifact_name }} to Dev"
+
+  deploy-modified-to-dev:
+    name: Deploy modified to Development
+    needs: [build, modify]
+    if: needs.build.outputs.deploy_to_development == 'true' && needs.build.outputs.run_modify == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download the artifact
+      run: echo "This step downloads ${{ needs.build.outputs.artifact_name }}"
+
+    - name: Deploy to development
+      run: echo "This step deploys ${{ needs.build.outputs.artifact_name }} to Dev"
 
   deploy-to-prod:
     name: Deploy to Production
     environment: Requires-Approval
-    needs: [ build, modify ]
-    if: |
-      github.event_name == 'workflow_dispatch' && github.event.inputs.stage2_trigger == 'true' ||
-      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build, modify]
+    if: needs.build.outputs.deploy_to_production == 'true'
     runs-on: ubuntu-latest
     steps:
+    - name: Download the artifact
+      run: echo "This step downloads ${{ needs.build.outputs.artifact_name }}"
+
     - name: Deploy to production
-      run: |
-        echo "This step should deploy ${{ needs.modify.outputs.artifact_name || needs.build.outputs.artifact_name }} to Production, manually on-demand or automatically"
+      run: echo "This step deploys ${{ needs.build.outputs.artifact_name }} to Production"
