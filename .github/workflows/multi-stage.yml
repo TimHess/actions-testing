@@ -64,9 +64,6 @@ jobs:
     name: Modify the artifact
     needs: build
     if: needs.build.outputs.run_modify == 'true'
-    concurrency:
-      group: artifact-modification
-      cancel-in-progress: false
     environment: Production
     runs-on: ubuntu-latest
     steps:
@@ -79,13 +76,22 @@ jobs:
     - name: Upload the modified artifact
       run: echo "This step uploads the modified artifact"
 
-  deploy-to-dev:
-    name: Deploy to Development
+  deploy-unmodified-to-dev:
+    name: Deploy unmodified to Development
     needs: build
-    if: needs.build.outputs.deploy_to_development == 'true'
-    concurrency:
-      group: artifact-modification
-      cancel-in-progress: false
+    if: needs.build.outputs.deploy_to_development == 'true' && needs.build.outputs.run_modify != 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download the artifact
+      run: echo "This step downloads ${{ needs.build.outputs.artifact_name }}"
+
+    - name: Deploy to development
+      run: echo "This step deploys ${{ needs.build.outputs.artifact_name }} to Dev"
+
+  deploy-modified-to-dev:
+    name: Deploy modified to Development
+    needs: [build, modify]
+    if: needs.build.outputs.deploy_to_development == 'true' && needs.build.outputs.run_modify == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Download the artifact
