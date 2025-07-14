@@ -24,7 +24,7 @@ on:
 
 jobs:
   build:
-    name: build
+    name: Build the artifact
     runs-on: ubuntu-latest
     outputs:
       artifact_name: ${{ steps.set-artifact-name.outputs.artifact_name }}
