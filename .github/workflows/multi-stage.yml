@@ -110,5 +110,9 @@ jobs:
     - name: Download the artifact
       run: echo "This step downloads ${{ needs.build.outputs.artifact_name }}"
 
-    - name: Deploy to production
-      run: echo "This step deploys ${{ needs.build.outputs.artifact_name }} to Production"
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: 'Publish packages to nuget.org'
+      run: dotnet nuget push *.nupkg --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json
